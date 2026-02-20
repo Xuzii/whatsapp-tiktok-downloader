@@ -1,0 +1,13 @@
+node_modules/
+.wwebjs_auth/
+.wwebjs_cache/
+downloads/
+analysis_results/
+__pycache__/
+*.pyc
+logs/
+url_tracker.json
+state.json
+.env
+web/restaurants.json
+.DS_Store

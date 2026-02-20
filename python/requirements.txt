@@ -1,0 +1,4 @@
+flask==3.1.0
+yt-dlp>=2024.12.23
+google-genai>=1.0.0
+google-cloud-storage>=2.14.0

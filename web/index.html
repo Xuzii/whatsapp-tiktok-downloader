@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+        #map { width: 100vw; height: 100vh; }
+        .popup-content { max-width: 300px; font-size: 13px; line-height: 1.4; }
+        .popup-content h3 { font-size: 15px; margin-bottom: 4px; }
+        .popup-cuisine { color: #666; font-size: 12px; margin-bottom: 6px; }
+        .popup-address { margin-bottom: 6px; }
+        .popup-dishes { margin-bottom: 6px; }
+        .popup-dishes span { display: inline-block; background: #f0f0f0; border-radius: 4px; padding: 1px 6px; margin: 1px 2px; font-size: 11px; }
+        .popup-rating { font-style: italic; color: #444; margin-bottom: 6px; }
+        .popup-images { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 6px; }
+        .popup-images img { width: 90px; height: 68px; object-fit: cover; border-radius: 4px; cursor: pointer; }
+        .popup-link a { color: #fe2c55; text-decoration: none; font-weight: 500; }
+        .popup-link a:hover { text-decoration: underline; }
+        .popup-meta { font-size: 11px; color: #999; margin-top: 4px; }
+        #stats {
+            position: fixed; top: 12px; right: 12px; z-index: 1000;
+            background: white; padding: 8px 14px; border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15); font-size: 13px;
+        }
+        /* Fullscreen image overlay */
+        #overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.85); z-index: 2000; cursor: pointer;
+            justify-content: center; align-items: center;
+        }
+        #overlay img { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+        #overlay.active { display: flex; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div id="stats">Loading...</div>
+    <div id="overlay" onclick="this.classList.remove('active')">
+        <img id="overlay-img" src="" alt="Food photo">
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const GCS_BUCKET = 'whatsapp-tiktok-restaurants';
+        const GCS_BASE = `https://storage.googleapis.com/${GCS_BUCKET}`;
+        const IMAGES_BASE = `${GCS_BASE}/analysis_results/`;
+
+        const map = L.map('map').setView([0, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(map);
+
+        function showFullImage(src) {
+            const overlay = document.getElementById('overlay');
+            document.getElementById('overlay-img').src = src;
+            overlay.classList.add('active');
+        }
+
+        function buildPopup(r) {
+            let html = '<div class="popup-content">';
+            html += `<h3>${r.name}</h3>`;
+            if (r.cuisine) html += `<div class="popup-cuisine">${r.cuisine}</div>`;
+
+            // Address
+            const loc = r.location || {};
+            const addr = [loc.specific_address, loc.neighborhood, loc.city, loc.country].filter(Boolean).join(', ');
+            if (addr) html += `<div class="popup-address">${addr}</div>`;
+
+            // Dishes
+            if (r.dishes && r.dishes.length > 0) {
+                html += '<div class="popup-dishes">';
+                r.dishes.forEach(d => { html += `<span>${d}</span>`; });
+                html += '</div>';
+            }
+
+            // Rating
+            if (r.rating) html += `<div class="popup-rating">"${r.rating}"</div>`;
+
+            // Food images
+            if (r.food_images && r.food_images.length > 0) {
+                html += '<div class="popup-images">';
+                r.food_images.forEach(img => {
+                    const src = IMAGES_BASE + img;
+                    html += `<img src="${src}" alt="Food" onclick="showFullImage('${src}')" />`;
+                });
+                html += '</div>';
+            }
+
+            // TikTok link
+            if (r.tiktok_url) {
+                html += `<div class="popup-link"><a href="${r.tiktok_url}" target="_blank">Watch on TikTok</a></div>`;
+            }
+
+            // Meta
+            if (r.uploader) html += `<div class="popup-meta">by @${r.uploader}</div>`;
+
+            html += '</div>';
+            return html;
+        }
+
+        async function loadData() {
+            try {
+                const resp = await fetch(`${GCS_BASE}/restaurants.json`);
+                if (!resp.ok) throw new Error('restaurants.json not found');
+                const restaurants = await resp.json();
+
+                document.getElementById('stats').textContent = `${restaurants.length} restaurant(s)`;
+
+                if (restaurants.length === 0) {
+                    document.getElementById('stats').textContent = 'No restaurants yet. Run the pipeline first!';
+                    return;
+                }
+
+                const markers = [];
+                restaurants.forEach(r => {
+                    if (r.lat == null || r.lng == null) return;
+                    const marker = L.marker([r.lat, r.lng]).addTo(map);
+                    marker.bindPopup(buildPopup(r), { maxWidth: 320 });
+                    markers.push(marker);
+                });
+
+                if (markers.length > 0) {
+                    const group = L.featureGroup(markers);
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+            } catch (e) {
+                console.error(e);
+                document.getElementById('stats').textContent = 'No data yet — run the pipeline first';
+            }
+        }
+
+        loadData();
+    </script>
+</body>
+</html>
