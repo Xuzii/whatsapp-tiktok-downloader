@@ -38,6 +38,9 @@ def upload_json(data, gcs_path):
     """Upload a dict/list as JSON to GCS."""
     bucket = _get_bucket()
     blob = bucket.blob(gcs_path)
+    # Prevent CDN/browser caching for restaurants.json so the website always gets fresh data
+    if gcs_path == 'restaurants.json':
+        blob.cache_control = 'no-cache, max-age=0'
     blob.upload_from_string(
         json.dumps(data, indent=2, ensure_ascii=False),
         content_type='application/json',
