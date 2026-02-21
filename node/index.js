@@ -19,6 +19,7 @@ const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
         headless: true,
+        protocolTimeout: 600000, // 10 min — getChats() is slow on e2-micro
         executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
         args: [
             '--no-sandbox',
@@ -35,7 +36,7 @@ const client = new Client({
             '--disable-translate',
             '--metrics-recording-only',
             '--no-default-browser-check',
-            '--js-flags=--max-old-space-size=256',
+            '--js-flags=--max-old-space-size=384',
         ],
     },
 });
@@ -334,7 +335,22 @@ client.on('ready', async () => {
     log(`Looking for group "${TARGET_GROUP_NAME}"...`);
 
     try {
-        const chats = await client.getChats();
+        // getChats() can be very slow on low-memory VMs — retry up to 3 times
+        let chats;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+                log(`Fetching chats (attempt ${attempt}/3)...`);
+                chats = await client.getChats();
+                log(`Fetched ${chats.length} chats.`);
+                break;
+            } catch (chatErr) {
+                log(`getChats() attempt ${attempt} failed: ${chatErr.message}`);
+                if (attempt === 3) throw chatErr;
+                log('Waiting 15s before retry...');
+                await new Promise(r => setTimeout(r, 15000));
+            }
+        }
+
         const group = chats.find(c => c.isGroup && c.name === TARGET_GROUP_NAME);
 
         if (!group) {
