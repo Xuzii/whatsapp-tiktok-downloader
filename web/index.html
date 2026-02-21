@@ -105,7 +105,7 @@
 
         async function loadData() {
             try {
-                const resp = await fetch(`${GCS_BASE}/restaurants.json`);
+                const resp = await fetch(`${GCS_BASE}/restaurants.json?t=${Date.now()}`);
                 if (!resp.ok) throw new Error('restaurants.json not found');
                 const restaurants = await resp.json();
 
