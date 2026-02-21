@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Restaurant Map</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
@@ -44,6 +46,7 @@
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script>
         const GCS_BUCKET = 'whatsapp-tiktok-restaurants';
         const GCS_BASE = `https://storage.googleapis.com/${GCS_BUCKET}`;
@@ -103,6 +106,23 @@
             return html;
         }
 
+        // Add small random offset to duplicate coordinates so pins don't stack exactly
+        function jitterDuplicates(restaurants) {
+            const seen = {};
+            restaurants.forEach(r => {
+                if (r.lat == null || r.lng == null) return;
+                const key = `${r.lat},${r.lng}`;
+                if (seen[key]) {
+                    // Offset by ~50-150m in random direction
+                    const angle = Math.random() * 2 * Math.PI;
+                    const dist = 0.0005 + Math.random() * 0.001;
+                    r.lat += Math.sin(angle) * dist;
+                    r.lng += Math.cos(angle) * dist;
+                }
+                seen[key] = true;
+            });
+        }
+
         async function loadData() {
             try {
                 const resp = await fetch(`${GCS_BASE}/restaurants.json?t=${Date.now()}`);
@@ -116,13 +136,26 @@
                     return;
                 }
 
+                // Spread out overlapping pins
+                jitterDuplicates(restaurants);
+
+                // Use marker clustering for clean visualization
+                const clusterGroup = L.markerClusterGroup({
+                    maxClusterRadius: 40,
+                    spiderfyOnMaxZoom: true,
+                    showCoverageOnHover: false,
+                });
+
                 const markers = [];
                 restaurants.forEach(r => {
                     if (r.lat == null || r.lng == null) return;
-                    const marker = L.marker([r.lat, r.lng]).addTo(map);
+                    const marker = L.marker([r.lat, r.lng]);
                     marker.bindPopup(buildPopup(r), { maxWidth: 320 });
+                    clusterGroup.addLayer(marker);
                     markers.push(marker);
                 });
+
+                map.addLayer(clusterGroup);
 
                 if (markers.length > 0) {
                     const group = L.featureGroup(markers);
